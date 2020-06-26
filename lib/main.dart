@@ -14,15 +14,28 @@ class MyApp extends StatelessWidget {
 }
 
 class StopWatchPage extends StatefulWidget {
+
   @override
   _StopWatchPageState createState() => _StopWatchPageState();
 }
 
 class _StopWatchPageState extends State<StopWatchPage> {
+
+  StopWatchState _currentState;
+  void setStopWatchState(StopWatchState state) => this._currentState = state;
+
   Timer _timer;
   var _time = 0;
-  var _isRunning = false;
+  var sec = 0;
+  var ms = '00';
   List<String> _lapTimes = [];
+
+  @override
+  void initState()
+  {
+    setStopWatchState(InitState());
+    super.initState();
+  }
 
   @override
   void dispose() {
@@ -38,16 +51,17 @@ class _StopWatchPageState extends State<StopWatchPage> {
       bottomNavigationBar: BottomAppBar(child: Container(height: 50)),
       floatingActionButton: FloatingActionButton(
           onPressed: () => setState(() {
-                _clickButton();
+                _currentState.playPause(this);
               }),
-          child: (_isRunning) ? Icon(Icons.pause) : Icon(Icons.play_arrow)),
+          child: _currentState.buildPlayPauseIcon()
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 
   Widget _buildBody() {
-    var sec = _time ~/ 100; // sec
-    var ms = '${_time % 100}'.padLeft(2, '0');
+    sec = _time ~/ 100; // sec
+    ms = '${_time % 100}'.padLeft(2, '0'); // milliseconds
 
     return Center(
       child: Padding(
@@ -78,52 +92,150 @@ class _StopWatchPageState extends State<StopWatchPage> {
                   bottom: 10,
                   child: FloatingActionButton(
                       backgroundColor: Colors.deepOrange,
-                      onPressed: _reset,
-                      child: Icon(Icons.rotate_left))),
+                      onPressed: (){
+                        setState(() {
+                          _currentState.reset(this);
+                        });
+                      },
+                      child: _currentState.buildResetIcon()
+                  )
+              ),
               Positioned(
                   right: 10,
                   bottom: 10,
                   child: FloatingActionButton(
                       backgroundColor: Colors.green,
                       onPressed: () {
-                        _recordLapTime('$sec.$ms');
+                        setState(() {
+                          _currentState.recordLapTime(this);
+                        });
+
+
                       },
-                      child: Icon(Icons.add_alarm)))
+                      child: _currentState.buildRecordLapTime()
+                  )
+              )
             ],
           )),
     );
   }
 
-  void _clickButton() {
-    _isRunning = !_isRunning;
-
-    (_isRunning) ? _start() : _pause();
+  void raiseEvent(StopWatchEvent evt) {
+    switch(evt)
+    {
+      case StopWatchEvent.PLAY_PAUSE:
+        _currentState.playPause(this);
+        break;
+      case StopWatchEvent.RECORD_LAP_TIME:
+        _currentState.recordLapTime(this);
+        break;
+      case StopWatchEvent.RESET:
+        _currentState.reset(this);
+        break;
+      default:
+        break;
+    }
   }
 
-  void _start() {
-    _timer = Timer.periodic(Duration(milliseconds: 10), (timer) {
-      setState(() {
-        _time++;
-      });
-    });
-  }
-
-  void _pause() {
+  void reset() {
     _timer?.cancel();
+    _lapTimes.clear();
+    _time = 0;
   }
 
-  void _reset() {
-    setState(() {
-      _isRunning = false;
-      _timer?.cancel();
-      _lapTimes.clear();
-      _time = 0;
-    });
+  void recordLapTime() {
+    String strTime = '$sec.$ms';
+    _lapTimes.insert(0, '${_lapTimes.length + 1} 등 $strTime');
   }
 
-  void _recordLapTime(String strTime) {
-    setState(() {
-      _lapTimes.insert(0, '${_lapTimes.length + 1} 등 $strTime');
-    });
+ void startTimer() {
+   _timer = Timer.periodic(Duration(milliseconds: 10), (timer) {
+     setState(() {
+       _time++;
+     });
+   });
+ }
+
+ void pause() {
+    _timer?.cancel();
+ }
+}
+
+enum StopWatchEvent {
+  PLAY_PAUSE,
+  RECORD_LAP_TIME,
+  RESET
+}
+
+abstract class StopWatchState
+{
+  void playPause(_StopWatchPageState app);
+  void reset(_StopWatchPageState app);
+  void recordLapTime(_StopWatchPageState app);
+
+  Widget buildPlayPauseIcon();
+  Widget buildResetIcon();
+  Widget buildRecordLapTime();
+}
+
+class InitState extends StopWatchState
+{
+  static const stateName = "Init";
+
+  void playPause(_StopWatchPageState app) {
+    print("[$stateName] Start");
+    app.startTimer();
+    app.setStopWatchState(RunningState());
   }
+  void reset(_StopWatchPageState app) {}
+  void recordLapTime(_StopWatchPageState app) {}
+
+  Widget buildPlayPauseIcon() => Icon(Icons.play_arrow);
+  Widget buildResetIcon() => Opacity(opacity: 0.0, child: Icon(Icons.rotate_left));
+  Widget buildRecordLapTime() => Opacity(opacity: 0.0, child: Icon(Icons.add_alarm));
+}
+
+class RunningState extends StopWatchState
+{
+  static const stateName = "Running";
+
+  void playPause(_StopWatchPageState app) {
+    print("[$stateName] Pause");
+    app.pause();
+    app.setStopWatchState(PauseState());
+  }
+  void reset(_StopWatchPageState app) {
+    print("[$stateName] Reset");
+    app.reset();
+    app.setStopWatchState(InitState());
+  }
+  void recordLapTime(_StopWatchPageState app) {
+    print("[$stateName] Record Lap Time");
+    app.recordLapTime();
+  }
+
+  Widget buildPlayPauseIcon() => Icon(Icons.pause);
+  Widget buildResetIcon() => Icon(Icons.rotate_left);
+  Widget buildRecordLapTime() => Icon(Icons.add_alarm);
+}
+
+class PauseState extends StopWatchState
+{
+  static const stateName = "Pause";
+
+  void playPause(_StopWatchPageState app) {
+    print("[$stateName] ReStart");
+    app.startTimer();
+    app.setStopWatchState(RunningState());
+  }
+  void reset(_StopWatchPageState app) {
+    print("[$stateName] Reset");
+    app.reset();
+    app.setStopWatchState(InitState());
+  }
+  void recordLapTime(_StopWatchPageState app) {}
+
+  Widget buildPlayPauseIcon() => Icon(Icons.play_arrow);
+  Widget buildResetIcon() => Icon(Icons.rotate_left);
+  Widget buildRecordLapTime() => Opacity(opacity: 0.0, child: Icon(Icons.add_alarm));
 }
